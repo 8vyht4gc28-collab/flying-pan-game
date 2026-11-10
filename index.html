@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>FLYING PAN! - ボール打ち返しゲーム</title>
+<style>
+  *{box-sizing:border-box} html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#071326;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;touch-action:manipulation}
+  #game{position:fixed;inset:0} canvas{display:block}
+  #hud{position:absolute;inset:0;pointer-events:none;padding:env(safe-area-inset-top) 14px 14px}
+  .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .pill{background:#071326b8;border:1px solid #ffffff30;border-radius:16px;padding:8px 13px;backdrop-filter:blur(8px);box-shadow:0 6px 22px #0004}
+  .score{font-size:clamp(22px,5vw,34px);font-weight:900;letter-spacing:.5px}
+  .small{font-size:12px;color:#b8d8f7}
+  #combo{font-size:14px;color:#ffe58b;font-weight:800;text-align:right}
+  #skillProgress{position:absolute;left:50%;top:76px;transform:translateX(-50%);width:min(260px,65vw);text-align:center}
+  .bar{height:8px;border-radius:20px;background:#ffffff30;overflow:hidden;margin-top:5px}
+  #barFill{height:100%;width:0;background:linear-gradient(90deg,#52e4ff,#ffe36d);border-radius:20px;transition:width .2s}
+  #hint{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);white-space:nowrap;color:#d5eaff;font-size:13px;text-shadow:0 2px 6px #000;opacity:.9}
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(180deg,#061327b8,#061327dc);backdrop-filter:blur(7px);pointer-events:auto}
+  .panel{width:min(440px,100%);text-align:center;padding:28px 22px;border:1px solid #ffffff30;border-radius:26px;background:linear-gradient(145deg,#142c4eeF,#0a1832f2);box-shadow:0 24px 80px #0009}
+  h1{font-size:clamp(34px,9vw,54px);line-height:1;margin:0 0 8px;font-weight:1000;letter-spacing:-1.5px;background:linear-gradient(90deg,#fff,#7be8ff,#ffe18a);background-clip:text;color:transparent}
+  .sub{color:#b9d5ef;margin:0 0 20px;font-size:14px}
+  button{border:0;border-radius:15px;padding:14px 22px;font-size:17px;font-weight:900;color:#071326;background:linear-gradient(100deg,#73e7ff,#ffe18a);box-shadow:0 8px 24px #48c9e755;cursor:pointer;min-width:180px}
+  button:active{transform:scale(.97)} .secondary{background:#ffffff18;color:white;border:1px solid #ffffff38;box-shadow:none;margin-top:10px}
+  .instructions{font-size:13px;line-height:1.8;color:#d4e4f6;margin:18px 0 22px}
+  #cards{display:grid;gap:10px;margin-top:18px}
+  .card{width:100%;text-align:left;min-width:0;padding:14px;border:1px solid #ffffff35;border-radius:16px;background:linear-gradient(130deg,#25466d,#142747);color:white;box-shadow:none}
+  .card strong{display:block;font-size:16px;margin-bottom:4px;color:#fff}.card span{font-size:12px;color:#c7def6;font-weight:500}
+  .hidden{display:none!important}
+  #toast{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%) scale(.8);font-size:clamp(24px,7vw,42px);font-weight:1000;color:#fff;text-shadow:0 4px 18px #00bfff;opacity:0;pointer-events:none;transition:.18s}
+  #toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="hud">
+ <div class="top">
+  <div class="pill"><div class="small">SCORE</div><div class="score" id="score">0</div></div>
+  <div class="pill" style="text-align:right"><div class="small">BEST</div><div class="score" id="best">0</div><div id="combo">COMBO ×1</div></div>
+ </div>
+ <div id="skillProgress" class="pill"><div class="small">次のスキルまで <b id="progressText">0 / 5</b></div><div class="bar"><div id="barFill"></div></div></div>
+ <div id="hint">ボールをタップ / クリックしてフライパンで打ち返そう！</div>
+</div>
+<div id="toast">NICE!</div>
+<div class="overlay" id="title">
+ <div class="panel">
+  <h1>FLYING PAN!</h1><p class="sub">落ちてくるボールを、フライパンで打ち返せ。</p>
+  <div class="instructions">ボールをタップするとスコア獲得＆上へ打ち返し！<br>フライパンは出現してから<strong>2秒間</strong>残り、触れたボールも自動で打ち返す。<br>ボールを1つでも床に落とすとゲームオーバー。<br>5回打ち返すごとにスキルを1つ選べる！</div>
+  <button id="startBtn">ゲームスタート</button>
+ </div>
+</div>
+<div class="overlay hidden" id="skill">
+ <div class="panel"><h1 style="font-size:32px">SKILL SELECT</h1><p class="sub">獲得する能力を1つ選ぼう！</p><div id="cards"></div></div>
+</div>
+<div class="overlay hidden" id="over">
+ <div class="panel"><h1 style="font-size:42px">GAME OVER</h1><p class="sub">ボールが床に落ちてしまった！</p>
+ <div style="font-size:42px;font-weight:1000;margin:10px" id="finalScore">0</div><div class="small" style="margin-bottom:20px">FINAL SCORE</div>
+ <button id="restartBtn">リスタート</button><br><button class="secondary" id="titleBtn">タイトルへ戻る</button>
+ </div>
+</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const host=document.getElementById('game');
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x08162d);
+scene.fog=new THREE.Fog(0x08162d,17,38);
+const camera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,.1,100);
+camera.position.set(0,7.2,15.5); camera.lookAt(0,3.2,0);
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.25;
+host.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0x9edcff,0x17203c,2.0));
+const key=new THREE.DirectionalLight(0xffffff,3.1);key.position.set(-5,12,8);key.castShadow=true;key.shadow.mapSize.set(2048,2048);scene.add(key);
+const rim=new THREE.PointLight(0x24bfff,24,24);rim.position.set(5,6,-5);scene.add(rim);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshStandardMaterial({color:0x101e38,roughness:.82,metalness:.12}));
+floor.rotation.x=-Math.PI/2;floor.position.y=0;floor.receiveShadow=true;scene.add(floor);
+const grid=new THREE.GridHelper(200,80,0x2c6590,0x1b385b);grid.position.y=.012;scene.add(grid);
+const platform=new THREE.Mesh(new THREE.CylinderGeometry(5.2,5.5,.28,64),new THREE.MeshStandardMaterial({color:0x162d4c,metalness:.55,roughness:.35}));
+platform.position.y=-.17;platform.receiveShadow=true;platform.castShadow=true;scene.add(platform);
+const ring=new THREE.Mesh(new THREE.TorusGeometry(5.05,.055,10,100),new THREE.MeshBasicMaterial({color:0x31caff}));
+ring.rotation.x=Math.PI/2;ring.position.y=-.015;scene.add(ring);
+
+const ballGeo=new THREE.SphereGeometry(.42,40,32);
+const ballMats=[0xff5d7d,0x54d7ff,0xffd15c,0xb48cff,0x70f0b0].map(c=>new THREE.MeshPhysicalMaterial({color:c,metalness:.18,roughness:.19,clearcoat:1,clearcoatRoughness:.08}));
+const panGroup=new THREE.Group();scene.add(panGroup);
+const panMat=new THREE.MeshStandardMaterial({color:0x303b4c,metalness:.88,roughness:.22});
+const pan=new THREE.Mesh(new THREE.CylinderGeometry(.78,.86,.12,48),panMat);pan.castShadow=true;pan.receiveShadow=true;panGroup.add(pan);
+const panInner=new THREE.Mesh(new THREE.CylinderGeometry(.67,.72,.035,48),new THREE.MeshStandardMaterial({color:0x66788c,metalness:.9,roughness:.18}));panInner.position.y=.075;panGroup.add(panInner);
+const handle=new THREE.Mesh(new THREE.CylinderGeometry(.095,.12,.95,16),new THREE.MeshStandardMaterial({color:0x9b633b,roughness:.45,metalness:.15}));handle.rotation.z=Math.PI/2;handle.position.set(1.15,0,0);panGroup.add(handle);
+const handleEnd=new THREE.Mesh(new THREE.SphereGeometry(.12,16,12),new THREE.MeshStandardMaterial({color:0x30251f}));handleEnd.position.set(1.62,0,0);panGroup.add(handleEnd);
+panGroup.visible=false;
+
+const stars=new THREE.Group();scene.add(stars);
+for(let i=0;i<90;i++){const s=new THREE.Mesh(new THREE.SphereGeometry(.025+Math.random()*.025,8,8),new THREE.MeshBasicMaterial({color:0x6fb9ff,transparent:true,opacity:.5+Math.random()*.4}));s.position.set((Math.random()-.5)*32,2+Math.random()*16,-7-Math.random()*15);stars.add(s)}
+const balls=[];let score=0,best=Number(localStorage.getItem('fpanBest')||0),hits=0,combo=0,active=false,paused=false,panTimer=0,spawnTimer=0,elapsed=0,scoreMultiplierUntil=0,slowUntil=0,autoUntil=0,ballBonus=0,fallBoost=1,spawnBoost=1;
+let panPos=new THREE.Vector3(0,3,0),lastToast=0;
+const $=id=>document.getElementById(id);$('best').textContent=best;
+function ballCount(){return balls.length}
+function makeBall(x,z,y=8){const mesh=new THREE.Mesh(ballGeo,ballMats[Math.floor(Math.random()*ballMats.length)]);mesh.castShadow=true;mesh.receiveShadow=true;mesh.position.set(x,y,z);scene.add(mesh);const glow=new THREE.PointLight(mesh.material.color,1.5,3);glow.position.copy(mesh.position);scene.add(glow);balls.push({mesh,glow,vy:0,spin:Math.random()*6,alive:true,hit:false});}
+function setScore(n){score+=n;$('score').textContent=score;if(score>best){best=score;localStorage.setItem('fpanBest',best);$('best').textContent=best}}
+function showToast(t){$('toast').textContent=t;$('toast').classList.add('show');lastToast=performance.now();setTimeout(()=>$('toast').classList.remove('show'),650)}
+function updateProgress(){$('progressText').textContent=(hits%5)+' / 5';$('barFill').style.width=((hits%5)/5*100)+'%'}
+function panAt(pos){panPos.set(pos.x,Math.max(.9,pos.y-.5),pos.z);panGroup.position.copy(panPos);panGroup.rotation.set(-.16,Math.random()*.5-.25,-.16);panGroup.visible=true;panTimer=2;}
+function bounce(b,bonus=true){b.vy=8.8+Math.min(elapsed*.045,2.5);b.hit=true;combo++;hits++;let mult=performance.now()<scoreMultiplierUntil?2:1;setScore(10*mult*(combo>=5?2:1));showToast(combo>=5?'COMBO! +'+(10*mult*2):'+'+(10*mult));updateProgress();if(bonus&&hits%5===0)openSkills();b.mesh.material.emissive=new THREE.Color(0x244466);setTimeout(()=>{if(b.mesh.material)b.mesh.material.emissive.set(0x000000)},180);}
+function getPointerWorld(ev){const r=renderer.domElement.getBoundingClientRect();const p=new THREE.Vector2((ev.clientX-r.left)/r.width*2-1,-((ev.clientY-r.top)/r.height*2-1));const ray=new THREE.Raycaster();ray.setFromCamera(p,camera);const plane=new THREE.Plane(new THREE.Vector3(0,0,1),0);const out=new THREE.Vector3();ray.ray.intersectPlane(plane,out);out.x=THREE.MathUtils.clamp(out.x,-4.3,4.3);out.z=THREE.MathUtils.clamp(out.z,-3.4,3.4);return out;}
+function interact(ev){if(!active||paused)return;ev.preventDefault();const ray=new THREE.Raycaster();const r=renderer.domElement.getBoundingClientRect();const p=new THREE.Vector2((ev.clientX-r.left)/r.width*2-1,-((ev.clientY-r.top)/r.height*2-1));ray.setFromCamera(p,camera);const targets=balls.filter(b=>b.alive).map(b=>b.mesh);const hit=ray.intersectObjects(targets,false)[0];let pos=getPointerWorld(ev);
+ if(hit){const b=balls.find(x=>x.mesh===hit.object);if(b){bounce(b);pos=b.mesh.position.clone();}}
+ else { // Empty-space tap still swings the pan; it can catch balls for two seconds.
+   const nearest=balls.filter(b=>b.alive).sort((a,b)=>a.mesh.position.distanceTo(pos)-b.mesh.position.distanceTo(pos))[0];
+   if(nearest&&nearest.mesh.position.distanceTo(pos)<2.3){bounce(nearest);pos=nearest.mesh.position.clone();}
+ }
+ panAt(pos);
+}
+renderer.domElement.addEventListener('pointerdown',interact,{passive:false});
+const skillPool=[
+ {name:'ボール増量',desc:'ボールが1個追加される。チャンスもピンチも増える！',apply:()=>makeBall((Math.random()-.5)*6,(Math.random()-.5)*4,9)},
+ {name:'落下スピードUP',desc:'ボールの落下速度が少し上がる代わりに、獲得スコア+5。',apply:()=>{fallBoost*=1.16;score+=5;$('score').textContent=score}},
+ {name:'スコア2倍',desc:'10秒間、打ち返しスコアが2倍！',apply:()=>scoreMultiplierUntil=performance.now()+10000},
+ {name:'スローモーション',desc:'6秒間、すべてのボールがゆっくり落ちる。',apply:()=>slowUntil=performance.now()+6000},
+ {name:'フライパン延長',desc:'次からフライパンの滞在時間が+0.7秒。',apply:()=>panDuration+=.7},
+ {name:'連打ボーナス',desc:'8秒間、コンボ倍率が3回目から発動！',apply:()=>autoUntil=performance.now()+8000},
+ {name:'ボール分裂',desc:'今いるボールが1個増える（最大5個）。',apply:()=>{if(balls.length<5)makeBall((Math.random()-.5)*6,(Math.random()-.5)*4,8)}},
+ {name:'救済バリア',desc:'次の落下ミスを1回だけ無効化する。',apply:()=>shield=true}
+];let panDuration=2,shield=false;
+function openSkills(){paused=true;$('skill').classList.remove('hidden');$('cards').innerHTML='';const choices=[...skillPool].sort(()=>Math.random()-.5).slice(0,3);choices.forEach(s=>{const b=document.createElement('button');b.className='card';b.innerHTML='<strong>'+s.name+'</strong><span>'+s.desc+'</span>';b.onclick=()=>{s.apply();$('skill').classList.add('hidden');paused=false;showToast('SKILL GET!')};$('cards').appendChild(b)})}
+function reset(){for(const b of balls){scene.remove(b.mesh);scene.remove(b.glow)}balls.length=0;score=0;hits=0;combo=0;elapsed=0;spawnTimer=0;panTimer=0;panDuration=2;fallBoost=1;spawnBoost=1;scoreMultiplierUntil=0;slowUntil=0;autoUntil=0;ballBonus=0;shield=false;paused=false;active=true;$('score').textContent='0';updateProgress();$('title').classList.add('hidden');$('over').classList.add('hidden');$('skill').classList.add('hidden');panGroup.visible=false;makeBall(-1.5,0,9);makeBall(1.4,-1.3,11)}
+function endGame(){active=false;paused=false;$('finalScore').textContent=score;$('over').classList.remove('hidden')}
+$('startBtn').onclick=reset;$('restartBtn').onclick=reset;$('titleBtn').onclick=()=>{$('over').classList.add('hidden');$('title').classList.remove('hidden');active=false};
+function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);const now=performance.now();if(active&&!paused){elapsed+=dt;spawnTimer+=dt;
+ if(spawnTimer>Math.max(1.05,2.8-elapsed*.012)/spawnBoost&&balls.length<1+Math.floor(elapsed/18)+ballBonus){spawnTimer=0;makeBall((Math.random()-.5)*7,(Math.random()-.5)*4,9+Math.random()*2)}
+ if(panTimer>0){panTimer-=dt;if(panTimer<=0)panGroup.visible=false}
+ for(const b of [...balls]){b.spin+=dt*2.2;b.mesh.rotation.set(b.spin*.35,b.spin,b.spin*.2);let slow=now<slowUntil?.45:1;b.vy-=13*fallBoost*slow*dt;b.mesh.position.y+=b.vy*dt;b.glow.position.copy(b.mesh.position);
+  // Pan's active hit zone: a ball crossing the pan surface is launched upward.
+  if(panTimer>0&&panGroup.visible&&Math.abs(b.mesh.position.x-panPos.x)<.92&&Math.abs(b.mesh.position.z-panPos.z)<.82&&b.vy<0&&b.mesh.position.y<panPos.y+.7&&b.mesh.position.y>panPos.y-.25){bounce(b)}
+  if(b.mesh.position.y<.42){if(shield){shield=false;b.mesh.position.y=.6;b.vy=6;showToast('BARRIER!')}else{endGame();break}}
+ }
+ }
+ stars.rotation.y+=dt*.012;
+ renderer.render(scene,camera);
+}
+const clock=new THREE.Clock();animate();
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2))});
+</script>
+</body></html>
